@@ -1,4 +1,4 @@
-# Unified Robust AGP + GMI + AUC + Full Clinical Metrics + TITR
+# Unified Robust AGP + GMI + AUC + Full Clinical Metrics + TITR + Raw Data Series (Bottom)
 
 import pandas as pd
 import numpy as np
@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import sys
 from datetime import timedelta
 from matplotlib.gridspec import GridSpec
+from matplotlib.patches import Patch
 
 LOW = 70
 HIGH = 180
@@ -284,20 +285,32 @@ result = result.sort_values("bin")
 result["minutes"] = result["bin"] * BIN_MINUTES
 
 # --------------------------------------------------
-# 13) Plot AGP with Internal Metrics Box, TITR Band, and Distribution Stacked Bar
+# 13) Create color-coded data series for raw readings
 # --------------------------------------------------
-# Create figure with GridSpec for custom layout
-fig = plt.figure(figsize=(18, 9))
-# Create 12 columns with first column width 1 and remaining 11 columns width 1 each (total 12)
-gs = GridSpec(1, 12, figure=fig, width_ratios=[1] + [1]*11, wspace=0.3)
+# Create a categorical column for glucose ranges
+df['glucose_range'] = pd.cut(df['Sensor Reading(mg/dL)'], 
+                              bins=[0, 54, 70, 180, 250, 1000],
+                              labels=['Very Low', 'Low', 'Target', 'High', 'Very High'])
 
-# Left subplot for stacked bar chart (spanning first 2 columns for better visibility)
+# --------------------------------------------------
+# 14) Plot AGP with Internal Metrics Box, TITR Band, and Distribution Stacked Bar (ORIGINAL LAYOUT)
+#     PLUS Raw Data Series at the Bottom
+# --------------------------------------------------
+# Create figure with GridSpec for custom layout - now with 2 rows (original + bottom)
+fig = plt.figure(figsize=(18, 12))
+# Create 12 columns for top row, and full width for bottom row
+gs = GridSpec(2, 12, figure=fig, 
+              height_ratios=[3, 1.5],  # Original AGP:distribution : raw data series
+              hspace=0.3, wspace=0.3)
+
+# --- TOP ROW: EXACTLY THE ORIGINAL LAYOUT (unchanged) ---
+# Left subplot for stacked bar chart (spanning first 2 columns)
 ax_bar = fig.add_subplot(gs[0, :2])
 
 # Right subplot for AGP (spanning remaining 10 columns)
 ax1 = fig.add_subplot(gs[0, 2:])
 
-# Create stacked bar chart of glucose distribution
+# Create stacked bar chart of glucose distribution (EXACTLY AS ORIGINAL)
 categories = ['Very Low\n(<54)', 'Low\n(54-69)', 'Target\n(70-180)', 
               'High\n(181-250)', 'Very High\n(>250)']
 percentages = [very_low_pct, low_pct, target_pct, high_pct, very_high_pct]
@@ -305,7 +318,7 @@ colors = ['darkred', 'red', 'limegreen', 'orange', 'darkorange']
 labels = ['Very Low (<54)', 'Low (54-69)', 'Target (70-180)', 
           'High (181-250)', 'Very High (>250)']
 
-# Create vertical stacked bar for better visibility
+# Create vertical stacked bar
 bottoms = np.zeros(1)
 bars = []
 for i, (pct, color) in enumerate(zip(percentages, colors)):
@@ -328,12 +341,11 @@ ax_bar.set_xticks([])
 ax_bar.set_ylabel('Percentage of Time (%)', fontsize=10)
 ax_bar.set_title('Glucose Distribution\nby Range', fontsize=11, pad=10)
 
-# Add gridlines for better readability
+# Add gridlines
 ax_bar.yaxis.grid(True, alpha=0.3, linestyle='--')
 ax_bar.set_axisbelow(True)
 
 # Add legend INSIDE the stacked chart at the bottom
-# Filter to only show categories with >0%
 legend_elements = []
 for i, (label, color, pct) in enumerate(zip(labels, colors, percentages)):
     if pct > 0:
@@ -347,7 +359,7 @@ if legend_elements:
                  ncol=1, fontsize=8, frameon=True, fancybox=True, shadow=True,
                  facecolor='white', edgecolor='gray')
 
-# Now create the main AGP plot on ax1
+# Now create the main AGP plot on ax1 (EXACTLY AS ORIGINAL)
 x = result["minutes"]
 
 # Add target zones with distinct colors and alpha
@@ -394,9 +406,7 @@ ax1.set_xticklabels([f"{int(t//60):02d}:00" for t in xticks])
 current_ylim = ax1.get_ylim()
 ax1.set_ylim(current_ylim[0], current_ylim[1] * 1.15)  # Add 15% headroom
 
-# --------------------------------------------------
-# Internal Metrics Box (Positioned inside plot with TITR included)
-# --------------------------------------------------
+# Internal Metrics Box (EXACTLY AS ORIGINAL, positioned inside plot)
 textstr = (
     f"TIME IN RANGE\n"
     f"TIR (70-180): {tir:.1f}%\n"
@@ -442,13 +452,90 @@ lines2, labels2 = ax2.get_legend_handles_labels()
 ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=9, 
           bbox_to_anchor=(0.02, 0.98), ncol=2)
 
-plt.suptitle("Ambulatory Glucose Profile with Time in Tight Range (TITR)", fontsize=14, y=0.98)
+# --- BOTTOM ROW: Raw Data Series Chart (spans all 12 columns) ---
+ax3 = fig.add_subplot(gs[1, :])
+
+# Define color mapping for glucose ranges
+range_colors = {
+    'Very Low': 'darkred',
+    'Low': 'red',
+    'Target': 'limegreen',
+    'High': 'orange',
+    'Very High': 'darkorange'
+}
+
+# Plot points in order (target first for better visibility of extremes)
+# Plot target points first (most numerous, less critical)
+target_data = df[df['glucose_range'] == 'Target']
+if not target_data.empty:
+    ax3.scatter(target_data['Time'], target_data['Sensor Reading(mg/dL)'], 
+               c=range_colors['Target'], s=8, alpha=0.4, 
+               label=f'Target (70-180): {len(target_data)} pts', edgecolors='none')
+
+# Plot high and very high
+high_data = df[df['glucose_range'] == 'High']
+if not high_data.empty:
+    ax3.scatter(high_data['Time'], high_data['Sensor Reading(mg/dL)'], 
+               c=range_colors['High'], s=12, alpha=0.6, 
+               label=f'High (181-250): {len(high_data)} pts', edgecolors='none')
+
+very_high_data = df[df['glucose_range'] == 'Very High']
+if not very_high_data.empty:
+    ax3.scatter(very_high_data['Time'], very_high_data['Sensor Reading(mg/dL)'], 
+               c=range_colors['Very High'], s=12, alpha=0.7, 
+               label=f'Very High (>250): {len(very_high_data)} pts', edgecolors='none')
+
+# Plot low and very low (most critical, plot last to be on top)
+low_data = df[df['glucose_range'] == 'Low']
+if not low_data.empty:
+    ax3.scatter(low_data['Time'], low_data['Sensor Reading(mg/dL)'], 
+               c=range_colors['Low'], s=15, alpha=0.8, 
+               label=f'Low (54-69): {len(low_data)} pts', edgecolors='black', linewidth=0.5)
+
+very_low_data = df[df['glucose_range'] == 'Very Low']
+if not very_low_data.empty:
+    ax3.scatter(very_low_data['Time'], very_low_data['Sensor Reading(mg/dL)'], 
+               c=range_colors['Very Low'], s=20, alpha=1.0, 
+               label=f'Very Low (<54): {len(very_low_data)} pts', edgecolors='black', linewidth=0.8)
+
+# Add target zone backgrounds (lighter than main plot)
+ax3.axhspan(TIGHT_LOW, TIGHT_HIGH, alpha=0.1, color='limegreen')
+ax3.axhspan(HIGH, 600, alpha=0.07, color='orange')
+ax3.axhspan(20, LOW, alpha=0.07, color='red')
+
+# Add reference lines
+ax3.axhline(LOW, linestyle=":", linewidth=1, color='darkred', alpha=0.4)
+ax3.axhline(HIGH, linestyle=":", linewidth=1, color='darkred', alpha=0.4)
+ax3.axhline(TIGHT_HIGH, linestyle=":", linewidth=1, color='darkgreen', alpha=0.4)
+
+# Format x-axis to show dates nicely
+ax3.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%Y-%m-%d'))
+ax3.xaxis.set_major_locator(plt.matplotlib.dates.DayLocator(interval=max(1, days_of_data//7)))
+plt.setp(ax3.xaxis.get_majorticklabels(), rotation=45, ha='right', fontsize=9)
+
+# Add minor ticks for hours if data span is short
+if days_of_data <= 3:
+    ax3.xaxis.set_minor_locator(plt.matplotlib.dates.HourLocator(interval=6))
+    ax3.xaxis.set_minor_formatter(plt.matplotlib.dates.DateFormatter('%H:%M'))
+    plt.setp(ax3.xaxis.get_minorticklabels(), rotation=45, ha='right', fontsize=8)
+
+ax3.set_ylabel("Glucose (mg/dL)", fontsize=11)
+ax3.set_xlabel("Date", fontsize=11)
+ax3.set_title("Raw Glucose Data Series (Color-coded by Range)", fontsize=12, pad=10)
+ax3.grid(True, alpha=0.2)
+ax3.legend(loc='upper right', ncol=3, fontsize=8, framealpha=0.9)
+
+# Set y-axis limits for consistency
+ax3.set_ylim(20, 400)
+
+plt.suptitle("Ambulatory Glucose Profile with Time in Tight Range (TITR) and Raw Data Series", 
+             fontsize=14, y=0.98)
 plt.tight_layout()
-plt.savefig("agp_profile_with_titr_and_distribution.png", dpi=300, bbox_inches='tight')
+plt.savefig("ambulatory_glucose_profile.png", dpi=300, bbox_inches='tight')
 plt.show()
 plt.close()
 
-# Print clinical interpretations and warnings
+# Print clinical interpretations and warnings (EXACTLY AS ORIGINAL)
 print("\n" + "="*60)
 print("CLINICAL SUMMARY")
 print("="*60)

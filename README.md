@@ -66,7 +66,7 @@ bash
 
 ## Example ##
 
-![Example](files/agp_profile_with_titr.png)
+![Example](files/ambulatory_glucose_profile.png)
 
 ### Metrics Explained ###
 
