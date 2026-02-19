@@ -35,7 +35,7 @@ Circadian binning for time-of-day patterns
 ### Requirements ###
 
 Packages
-- pip install pandas numpy matplotlib openpyxl
+- pip install -r requirements.txt
 
 Input Data Format
 - Excel file with two columns:
