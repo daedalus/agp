@@ -47,6 +47,11 @@ Input Data Format
 bash
 `python get_sensor.py your_glucose_data.xlsx`
 
+
+## Example ##
+
+![Example](files/agp_profile_with_titr.png)
+
 ### Metrics Explained ###
 
 Core Metrics
