@@ -1,4 +1,4 @@
-# Full AGP + GMI + Robust Metrics
+# Unified Robust AGP + GMI + AUC + Full Clinical Metrics
 
 import pandas as pd
 import numpy as np
@@ -9,7 +9,7 @@ LOW = 70
 HIGH = 180
 BIN_MINUTES = 5
 MIN_SAMPLES_PER_BIN = 5
-ROC_CLIP = 10
+ROC_CLIP = 10  # mg/dL/min physiological guardrail
 
 # --------------------------------------------------
 # 1) Read Data
@@ -25,18 +25,18 @@ df = df.dropna(subset=required)
 df = df.sort_values("Time").drop_duplicates(subset=["Time"])
 
 if len(df) == 0:
-    raise ValueError("No valid glucose data.")
+    raise ValueError("No valid glucose data found.")
+
+glucose = df["Sensor Reading(mg/dL)"].astype(float)
 
 # --------------------------------------------------
-# 2) ROC
+# 2) Rate of Change (ROC)
 # --------------------------------------------------
-df["delta_glucose"] = df["Sensor Reading(mg/dL)"].diff()
+df["delta_glucose"] = glucose.diff()
 df["delta_minutes"] = df["Time"].diff().dt.total_seconds() / 60.0
 df["ROC"] = df["delta_glucose"] / df["delta_minutes"]
 df.loc[df["delta_minutes"] <= 0, "ROC"] = np.nan
 df["ROC"] = df["ROC"].clip(-ROC_CLIP, ROC_CLIP)
-
-glucose = df["Sensor Reading(mg/dL)"].astype(float)
 
 # --------------------------------------------------
 # 3) Core Metrics
@@ -62,12 +62,12 @@ def compute_mage(series):
 
     turning = []
     for i in range(1, len(signs)):
-        if signs[i] != signs[i-1] and signs[i] != 0:
+        if signs[i] != signs[i - 1] and signs[i] != 0:
             turning.append(i)
 
     excursions = []
     for i in range(1, len(turning)):
-        delta = abs(s[turning[i]] - s[turning[i-1]])
+        delta = abs(s[turning[i]] - s[turning[i - 1]])
         if delta > sd:
             excursions.append(delta)
 
@@ -116,12 +116,9 @@ tar = (glucose > HIGH).sum() / total * 100
 tbr = (glucose < LOW).sum() / total * 100
 
 # --------------------------------------------------
-# 7b) AUC Metrics
+# 8) AUC Metrics
 # --------------------------------------------------
-# Convert time to minutes since start
-df_auc = df.copy()
-df_auc = df_auc.sort_values("Time")
-
+df_auc = df.sort_values("Time").copy()
 df_auc["time_minutes"] = (
     (df_auc["Time"] - df_auc["Time"].iloc[0]).dt.total_seconds() / 60.0
 )
@@ -129,22 +126,12 @@ df_auc["time_minutes"] = (
 times = df_auc["time_minutes"].values
 values = df_auc["Sensor Reading(mg/dL)"].values
 
-# Total AUC
-#auc_total = np.trapz(values, times)
 auc_total = np.trapezoid(values, times)
-
-
-# AUC above HIGH
-above = np.maximum(values - HIGH, 0)
-auc_high = np.trapezoid(above, times)
-
-# AUC below LOW
-below = np.maximum(LOW - values, 0)
-auc_low = np.trapezoid(below, times)
-
+auc_high = np.trapezoid(np.maximum(values - HIGH, 0), times)
+auc_low = np.trapezoid(np.maximum(LOW - values, 0), times)
 
 # --------------------------------------------------
-# 8) Circadian Binning
+# 9) Circadian Binning
 # --------------------------------------------------
 df["seconds"] = (
     df["Time"].dt.hour * 3600 +
@@ -154,20 +141,18 @@ df["seconds"] = (
 
 df["bin"] = (df["seconds"] // (BIN_MINUTES * 60)).astype(int)
 
-def pct(x, q):
-    return np.percentile(x, q)
-
 grouped = df.groupby("bin")["Sensor Reading(mg/dL)"]
 
 result = grouped.agg(
     count="count",
-    p5=lambda x: pct(x, 5),
-    p10=lambda x: pct(x, 10),
-    p25=lambda x: pct(x, 25),
+    p5=lambda x: np.percentile(x, 5),
+    p10=lambda x: np.percentile(x, 10),
+    p25=lambda x: np.percentile(x, 25),
     median="median",
-    p75=lambda x: pct(x, 75),
-    p90=lambda x: pct(x, 90),
-    p95=lambda x: pct(x, 95),
+    mean="mean",
+    p75=lambda x: np.percentile(x, 75),
+    p90=lambda x: np.percentile(x, 90),
+    p95=lambda x: np.percentile(x, 95),
 ).reset_index()
 
 roc_profile = df.groupby("bin")["ROC"].mean().reset_index()
@@ -182,30 +167,31 @@ result = result.sort_values("bin")
 result["minutes"] = result["bin"] * BIN_MINUTES
 
 # --------------------------------------------------
-# 9) Plot AGP
+# 10) Plot AGP
 # --------------------------------------------------
 fig, ax1 = plt.subplots(figsize=(14, 7))
 x = result["minutes"]
 
-# 5–95%
 ax1.fill_between(x, result["p5"], result["p95"], alpha=0.15, label="5–95%")
-
-# 25–75% (IQR)
-ax1.fill_between(x, result["p25"], result["p75"], alpha=0.35, label="25–75% (IQR)")
-
-# Median
+ax1.fill_between(x, result["p25"], result["p75"], alpha=0.35, label="IQR")
 ax1.plot(x, result["median"], linewidth=2.5, label="Median")
+ax1.plot(x, result["mean"], linestyle="--", linewidth=1.5, label="Mean")
 
 ax1.axhline(LOW, linestyle=":", linewidth=1)
 ax1.axhline(HIGH, linestyle=":", linewidth=1)
 
 ax1.set_xlabel("Time of Day")
 ax1.set_ylabel("Glucose (mg/dL)")
+
+
+# Add shaded target range (70-180)
+ax1.axhspan(70, 180, alpha=0.1, color='green')
+
 ax1.grid(True)
 
-# ROC secondary axis
+# ROC axis
 ax2 = ax1.twinx()
-ax2.plot(x, result["roc_mean"], linestyle="--", linewidth=1.5,
+ax2.plot(x, result["roc_mean"], linestyle=":", linewidth=2,
          label="ROC (mg/dL/min)")
 ax2.set_ylabel("Rate of Change (mg/dL/min)")
 
@@ -230,8 +216,8 @@ textstr = (
     f"MAGE: {mage:.1f}\n"
     f"CONGA(1h): {conga:.1f}\n"
     f"LBGI: {lbgi:.2f}\n"
-    f"HBGI: {hbgi:.2f}"
-    f"\nAUC Total: {auc_total:.0f}\n"
+    f"HBGI: {hbgi:.2f}\n\n"
+    f"AUC Total: {auc_total:.0f}\n"
     f"AUC >{HIGH}: {auc_high:.0f}\n"
     f"AUC <{LOW}: {auc_low:.0f}"
 )
@@ -239,9 +225,9 @@ textstr = (
 plt.gcf().text(0.80, 0.70, textstr, fontsize=10,
                bbox=dict(boxstyle="round", alpha=0.2))
 
-plt.title("Ambulatory Glucose Profile (Full AGP + GMI)")
+plt.title("Ambulatory Glucose Profile (Full Clinical Version)")
 plt.tight_layout()
-plt.savefig("agp_profile.png", dpi=300)
+plt.savefig("agp_profile_full.png", dpi=300)
 plt.show()
 plt.close()
 
