@@ -3,23 +3,104 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import sys
+import argparse
 from datetime import timedelta
 from matplotlib.gridspec import GridSpec
 from matplotlib.patches import Patch
 
-LOW = 70
-HIGH = 180
-TIGHT_LOW = 70
-TIGHT_HIGH = 140  # Tight range upper limit
-BIN_MINUTES = 5
-MIN_SAMPLES_PER_BIN = 5
-ROC_CLIP = 10  # mg/dL/min physiological guardrail
+# Add argument parser
+parser = argparse.ArgumentParser(description='Generate Ambulatory Glucose Profile from sensor data')
+parser.add_argument('input_file', help='Path to Excel file with glucose data')
+parser.add_argument('--output', '-o', default='ambulatory_glucose_profile.png', 
+                    help='Output PNG filename (default: ambulatory_glucose_profile.png)')
+parser.add_argument('--low-threshold', type=int, default=70, 
+                    help='Low glucose threshold in mg/dL (default: 70)')
+parser.add_argument('--high-threshold', type=int, default=180, 
+                    help='High glucose threshold in mg/dL (default: 180)')
+parser.add_argument('--tight-low', type=int, default=70, 
+                    help='Tight range lower limit in mg/dL (default: 70)')
+parser.add_argument('--tight-high', type=int, default=140, 
+                    help='Tight range upper limit in mg/dL (default: 140)')
+parser.add_argument('--bin-minutes', type=int, default=5, 
+                    help='Time bin size in minutes for AGP (default: 5)')
+parser.add_argument('--min-samples', type=int, default=5, 
+                    help='Minimum samples per bin (default: 5)')
+parser.add_argument('--no-plot', action='store_true', 
+                    help='Calculate metrics only, do not generate plot')
+parser.add_argument('--verbose', '-v', action='store_true', 
+                    help='Print detailed metrics during execution')
+parser.add_argument('--config', '-c', help='Configuration file with parameters')
+
+parser.add_argument('--patient-name', '-n', default='Unknown', 
+                    help='Patient name for report header')
+parser.add_argument('--patient-id', '-id', default='N/A', 
+                    help='Patient ID for report header')
+parser.add_argument('--doctor', '-d', default='', 
+                    help='Doctor name for report header')
+parser.add_argument('--notes', '-note', default='', 
+                    help='Additional notes for report header')
+
+args = parser.parse_args()
+
+
+from datetime import datetime
+
+def create_report_header(args):
+    """Create a formatted header dictionary with patient and report information"""
+    header = {
+        'patient_name': args.patient_name,
+        'patient_id': args.patient_id,
+        'doctor': args.doctor,
+        'notes': args.notes,
+        'report_date': datetime.now().strftime('%Y-%m-%d %H:%M'),
+        'report_generated': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'data_source': args.input_file
+    }
+    return header
+
+# Create header
+report_header = create_report_header(args)
+
+
+# Load config file if specified
+if args.config:
+    import json
+    try:
+        with open(args.config, 'r') as f:
+            config = json.load(f)
+            # Override args with config values (if they exist)
+            for key, value in config.items():
+                if hasattr(args, key):
+                    setattr(args, key, value)
+            if args.verbose:
+                print(f"Loaded configuration from {args.config}")
+    except Exception as e:
+        print(f"Error loading config file: {e}")
+
+# Replace hardcoded constants with argparse values
+LOW = args.low_threshold
+HIGH = args.high_threshold
+TIGHT_LOW = args.tight_low
+TIGHT_HIGH = args.tight_high
+BIN_MINUTES = args.bin_minutes
+MIN_SAMPLES_PER_BIN = args.min_samples
+ROC_CLIP = 10  # Keep this hardcoded as it's a physiological constant
+
+if args.verbose:
+    print(f"Loading data from: {args.input_file}")
+    print(f"Glucose thresholds: Low={LOW}, High={HIGH}, Tight={TIGHT_LOW}-{TIGHT_HIGH}")
+
 
 # --------------------------------------------------
 # 1) Read Data
 # --------------------------------------------------
-df = pd.read_excel(sys.argv[1])
+try:
+    df = pd.read_excel(args.input_file)
+    if args.verbose:
+        print(f"Successfully loaded {len(df)} rows from {args.input_file}")
+except Exception as e:
+    print(f"Error loading file {args.input_file}: {e}")
+    sys.exit(1)
 
 required = ["Time", "Sensor Reading(mg/dL)"]
 if not all(col in df.columns for col in required):
@@ -616,8 +697,27 @@ ax3.text(0.01, 0.97, f"Overall Trend: {trend_arrow}",
          bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7,
                    edgecolor=trend_color, linewidth=1.5))
 
+
+# Add discrete header with patient information at the top of the figure
+header_text = f"Patient: {report_header['patient_name']} | ID: {report_header['patient_id']}"
+if report_header['doctor']:
+    header_text += f" | Dr: {report_header['doctor']}"
+header_text += f" | Report Date: {report_header['report_date']}"
+
+plt.figtext(0.5, 0.96, header_text, 
+            ha="center", fontsize=10, fontweight='bold', 
+            bbox=dict(boxstyle="round,pad=0.3", facecolor='lightgray', alpha=0.3))
+
+# Add data source and notes as smaller text below header
+if report_header['notes']:
+    plt.figtext(0.5, 0.94, f"Notes: {report_header['notes']} | Source: {report_header['data_source']}", 
+                ha="center", fontsize=8, style='italic', color='gray')
+else:
+    plt.figtext(0.5, 0.94, f"Source: {report_header['data_source']}", 
+                ha="center", fontsize=8, style='italic', color='gray')
+
 plt.suptitle("Ambulatory Glucose Profile with Time in Tight Range (TITR) and Raw Data Series", 
-             fontsize=14, y=0.98)
+             fontsize=14, y=0.92)
 plt.tight_layout()
 
 
@@ -631,10 +731,20 @@ plt.figtext(0.5, 0.02, f"{metadata['Source']}\n{metadata['Copyright']}\n{metadat
             ha="center", fontsize=9, color='gray', 
             style='italic', alpha=0.7)
 
-plt.savefig("ambulatory_glucose_profile.png", dpi=300, bbox_inches='tight', metadata=metadata)
-plt.show()
-plt.close()
+if not args.no_plot:
+    plt.savefig(args.output, dpi=300, bbox_inches='tight', metadata=metadata)
+    if args.verbose:
+        print(f"Plot saved to: {args.output}")
+    plt.show()
+    plt.close()
+else:
+    if args.verbose:
+        print("Plot generation skipped (--no-plot flag used)")
+    plt.close()
 
+print("\n" + "="*60)
+print(f"PATIENT: {report_header['patient_name']} (ID: {report_header['patient_id']})")
+print(f"REPORT DATE: {report_header['report_date']}")
 
 # Print clinical interpretations and warnings (EXACTLY AS ORIGINAL)
 print("\n" + "="*60)
@@ -666,3 +776,4 @@ print(f"  Low (54-69 mg/dL): {low_pct:.1f}%")
 print(f"  Target (70-140 mg/dL): {tight_target_pct:.1f}%")
 print(f"  High (141-250 mg/dL): {high_pct:.1f}%")
 print(f"  Very High (>250 mg/dL): {very_high_pct:.1f}%")
+
