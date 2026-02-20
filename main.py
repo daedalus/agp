@@ -5,7 +5,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import argparse
-from datetime import timedelta
 from matplotlib.gridspec import GridSpec
 from matplotlib.patches import Patch
 from datetime import datetime
@@ -17,19 +16,23 @@ parser = argparse.ArgumentParser(description='Generate Ambulatory Glucose Profil
 parser.add_argument('input_file', help='Path to Excel file with glucose data')
 parser.add_argument('--output', '-o', default='ambulatory_glucose_profile.png', 
                     help='Output PNG filename (default: ambulatory_glucose_profile.png)')
-                   
-parser.add_argument('--low-threshold', type=int, default=54, 
-                    help='Low glucose threshold in mg/dL (default: 54)')
+
+parser.add_argument('--very-low-threshold', type=int, default=54, 
+                    help='Very low glucose threshold in mg/dL (default: 54)')
+parser.add_argument('--low-threshold', type=int, default=70, 
+                    help='Low glucose threshold in mg/dL (default: 70)')
 parser.add_argument('--high-threshold', type=int, default=180, 
                     help='High glucose threshold in mg/dL (default: 180)')
 parser.add_argument('--very-high-threshold', type=int, default=250, 
-                    help='High glucose threshold in mg/dL (default: 250)')
+                    help='Very high glucose threshold in mg/dL (default: 250)')
 parser.add_argument('--tight-low', type=int, default=70, 
                     help='Tight range lower limit in mg/dL (default: 70)')
 parser.add_argument('--tight-high', type=int, default=140, 
                     help='Tight range upper limit in mg/dL (default: 140)')
 parser.add_argument('--bin-minutes', type=int, default=5, 
                     help='Time bin size in minutes for AGP (default: 5)')
+parser.add_argument('--sensor-interval', type=int, default=5, 
+                    help='CGM Sensor interval (default: 5)')
 parser.add_argument('--min-samples', type=int, default=5, 
                     help='Minimum samples per bin (default: 5)')
 parser.add_argument('--no-plot', action='store_true', 
@@ -85,6 +88,7 @@ def create_report_header(args):
 report_header = create_report_header(args)
 
 # Replace hardcoded constants with argparse values
+VERY_LOW = args.very_low_threshold
 LOW = args.low_threshold
 HIGH = args.high_threshold
 VERY_HIGH = args.very_high_threshold
@@ -92,6 +96,7 @@ TIGHT_LOW = args.tight_low
 TIGHT_HIGH = args.tight_high
 BIN_MINUTES = args.bin_minutes if args.bin_minutes > 0 else 1
 MIN_SAMPLES_PER_BIN = args.min_samples
+SENSOR_INTERVAL = args.sensor_interval if args.sensor_interval > 0 else 5
 ROC_CLIP = 10  # Keep this hardcoded as it's a physiological constant
 
 if args.verbose:
@@ -144,6 +149,8 @@ std_glucose = glucose.std(ddof=0)
 mode_glucose = glucose.mode()
 skew_glucose = glucose.skew()
 cv_percent = (std_glucose / mean_glucose) * 100 if mean_glucose > 0 else np.nan
+
+mode_str = f"{mode_glucose.iloc[0]:.1f}" if not mode_glucose.empty else "N/A"
 
 # skew interpretation
 if skew_glucose < -1:
@@ -313,11 +320,11 @@ lbgi, hbgi = compute_risk_indices(glucose)
 total = len(glucose)
 
 # Calculate percentages for each glucose range
-very_low_pct = (glucose < LOW).sum() / total * 100
-low_pct = ((glucose >= TIGHT_LOW) & (glucose < LOW)).sum() / total * 100
-tight_target_pct = ((glucose >= TIGHT_LOW) & (glucose <= TIGHT_HIGH)).sum() / total * 100  # 70-140
-above_tight_pct = ((glucose > TIGHT_HIGH) & (glucose <= HIGH)).sum() / total * 100   # 141-180
-high_pct = ((glucose > HIGH) & (glucose <= VERY_HIGH)).sum() / total * 100                 # 181-250
+very_low_pct  = (glucose < VERY_LOW).sum() / total * 100                              # <54
+low_pct       = ((glucose >= VERY_LOW) & (glucose < TIGHT_LOW)).sum() / total * 100   # 54–69
+tight_target_pct = ((glucose >= TIGHT_LOW) & (glucose <= TIGHT_HIGH)).sum() / total * 100
+above_tight_pct  = ((glucose > TIGHT_HIGH) & (glucose <= HIGH)).sum() / total * 100
+high_pct      = ((glucose > HIGH) & (glucose <= VERY_HIGH)).sum() / total * 100
 very_high_pct = (glucose > VERY_HIGH).sum() / total * 100
 
 # Time in Range (Standard: 70-180) — correctly includes 70-140 AND 141-180
@@ -365,9 +372,9 @@ values = df_auc["Sensor Reading(mg/dL)"].values
 
 auc_total = trapz(values, times)
 auc_high = trapz(np.maximum(values - HIGH, 0), times)
-auc_low = trapz(np.maximum(LOW - values, 0), times)
+auc_low = trapz(np.maximum(VERY_LOW - values, 0), times)
 
-time_weighted_avg = auc_total / times[-1]  # mg/dL (time-weighted average)
+time_weighted_avg = auc_total / times[-1] if times[-1] > 0 else np.nan
 time_in_hyperglycemia_pct = (auc_high / auc_total) * 100 if auc_total > 0 else 0
 time_in_hypoglycemia_pct = (auc_low / auc_total) * 100 if auc_total > 0 else 0
 
@@ -380,7 +387,7 @@ hours_of_data = (df['Time'].max() - df['Time'].min()).total_seconds() / 3600
 readings_per_day = len(df) / days_of_data if days_of_data > 0 else len(df)
 
 # Sensor wear time percentage
-total_possible_readings = days_of_data * (24 * 60 / BIN_MINUTES)  # Theoretical max based on bin size
+total_possible_readings = days_of_data * (24 * 60 / SENSOR_INTERVAL)  # Theoretical max based on bin size
 wear_percentage = (len(df) / total_possible_readings) * 100 if total_possible_readings > 0 else np.nan
 
 # Severe hypoglycemia events
@@ -453,7 +460,7 @@ result["minutes"] = result["bin"] * BIN_MINUTES
 # --------------------------------------------------
 # Create a categorical column for glucose ranges (6 bands matching corrected metrics)
 df['glucose_range'] = pd.cut(df['Sensor Reading(mg/dL)'], 
-                              bins=[0, LOW, TIGHT_LOW, TIGHT_HIGH, HIGH, VERY_HIGH, 1000],
+                              bins=[0, VERY_LOW, TIGHT_LOW, TIGHT_HIGH, HIGH, VERY_HIGH, 1000],
                               labels=['Very Low', 'Low', 'Tight Target', 'Above Tight', 'High', 'Very High'])
 
 # --------------------------------------------------
@@ -539,7 +546,7 @@ ax1.axhspan(20, LOW, alpha=0.1, color='red',
 
 
 # Add trend line
-ax1.axhline(mean_glucose, linestyle='-.', linewidth=2, color='purple', alpha=0.7, label='Trend')
+ax1.axhline(mean_glucose, linestyle='-.', linewidth=2, color='purple', alpha=0.7, label='Overall Mean')
 
 # Main AGP elements
 ax1.fill_between(x, result["p5"], result["p95"], alpha=0.15, color='blue', label="5–95%")
@@ -587,30 +594,30 @@ textstr = (
     f"TBR <70: {tbr:.1f}% (54-69: {tbr_level1:.1f}%, <54: {tbr_level2:.1f}%)\n\n"
     f"GLUCOSE STATS\n"
     f"Mean: {mean_glucose:.1f} mg/dL, median: {median_glucose:.1f} mg/dL\n" 
-    f"Std: {std_glucose:.1f} mg/dL, mode: {mode_glucose[0]:.1f} mg/dL\n"
+    f"Std: {std_glucose:.1f} mg/dL, mode: {mode_str} mg/dL\n"
     f"skew: {skew_glucose:.1f} ({skew_interpretation})\n"
     f"GMI: {gmi:.2f}%\n"
     f"CV: {cv_percent:.1f}% {'(Stable)' if cv_percent < 36 else '(Unstable)'}\n"
-    f"CV: Day: {day_cv:.1f}%, Night: {night_cv:.1f}%\n"
+    f"CV: Day: {fmt(day_cv)}%, Night: {fmt(night_cv)}%\n"
     f"J-Index: {j_index:.1f}\n\n"
     f"VARIABILITY\n"
-    f"MAGE: {mage:.1f}\n"
-    f"MODD: {modd:.1f}\n"
-    f"CONGA(1h): {conga:.1f}\n\n"
+    f"MAGE: {fmt(mage)}\n"
+    f"MODD: {fmt(modd)}\n"
+    f"CONGA(1h): {fmt(conga)}\n\n"
     f"RISK\n"
     f"LBGI: {lbgi:.2f}\n"
     f"HBGI: {hbgi:.2f}\n"
     f"GRI: {gri:.1f} ({gri_txt})\n"
-    f"ADRR: {adrr:.1f}\n\n"
+    f"ADRR: {fmt(adrr)}\n\n"
     f"AUC\n"
-    f"Time-weighted avg: {time_weighted_avg:.1f} mg/dL\n"
+    f"Time-weighted avg: {fmt(time_weighted_avg)} mg/dL\n"
     f"Hyperglycemia exposure: {time_in_hyperglycemia_pct:.1f}%\n"
     f"Hypoglycemia exposure: {time_in_hypoglycemia_pct:.1f}%\n\n"
     f"DATA QUALITY\n"
     f"Days: {days_of_data:.1f}\n"
     f"Readings/day: {readings_per_day:.0f}\n"
     f"Wear time: {wear_percentage:.1f}%\n"
-    f"Severe hypo/week: {severe_hypo_per_week:.2f}"
+    f"Severe hypo/week: {fmt(severe_hypo_per_week, 2)}"
 )
 
 # Position the text box with proper margins from plot edges
@@ -772,7 +779,7 @@ else:
 print("\n" + "="*60)
 print(f"PATIENT: {report_header['patient_name']} (ID: {report_header['patient_id']})")
 print(f"REPORT DATE: {report_header['report_date']}")
-
+print(f"Hours of data: {hours_of_data:.1f}")
 # Print clinical interpretations and warnings (EXACTLY AS ORIGINAL)
 print("\n" + "="*60)
 print("CLINICAL SUMMARY")
