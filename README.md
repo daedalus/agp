@@ -4,7 +4,7 @@ AGP Glucose Analysis Tool with TITR
 
 This tool is for research and educational purposes only. It is NOT a medical device and has NOT been validated for clinical diagnosis or treatment decisions.
 
-Do not adjust medications, change diet, or make health decisions based solely on this output. Exercise caution and always consult a qualified healthcare professional for interpretation of glucose data and any treatment adjustments."
+Do not adjust medications, change diet, or make health decisions based solely on this output. Exercise caution and always consult a qualified healthcare professional for interpretation of glucose data and any treatment adjustments.
 
 ### Overview ###
 
@@ -125,9 +125,9 @@ Key parameters at script top:
 
 ### Interpretation Tips ###
 
-- TITR >50% suggests optimal glycemic control
+- TITR >50% suggests acceptable glycemic control
 - TBR >4% indicates need for hypoglycemia prevention
 - CV >36% suggests unstable glucose, consider variability-reducing therapy
 - Nighttime patterns: Shaded area helps identify nocturnal hypoglycemia; however, a sharp "V-shaped" drop with a rapid recovery may indicate sensor compression artifact rather than true hypoglycemia
 - ROC spikes indicate rapid changes; correlate with meals/exercise
-- GMI < 7.0%: Suggests optimal glycemic control (Note: GMI estimates A1c from CGM data, but may differ from lab A1c).
+- GMI < 7.0%: Suggests acceptable glycemic control (Note: GMI estimates A1c from CGM data, but may differ from lab A1c).
