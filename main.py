@@ -518,13 +518,16 @@ x = result["minutes"]
 # Add target zones with distinct colors and alpha
 ax1.axhspan(TIGHT_LOW, TIGHT_HIGH, alpha=0.15, color='limegreen', 
             label=f'Tight Target ({TIGHT_LOW}-{TIGHT_HIGH})')
+ax1.axhspan(TIGHT_HIGH, HIGH, alpha=0.20, color='darkgreen', 
+            label=f'Above Tight ({TIGHT_HIGH}-{HIGH})')
 ax1.axhspan(HIGH, 600, alpha=0.1, color='orange', 
             label='Above Range (>180)')
 ax1.axhspan(20, LOW, alpha=0.1, color='red', 
             label='Below Range (<70)')
 
 # Add the standard target range as a lighter overlay to show the full target
-ax1.axhspan(HIGH, TIGHT_HIGH, alpha=0.1, color='yellowgreen')  # 140-180 zone
+#ax1.axhspan(HIGH, TIGHT_HIGH, alpha=0.1, color='yellowgreen')  # 140-180 zone
+
 
 # Add trend line
 ax1.axhline(mean_glucose, linestyle='-.', linewidth=2, color='purple', alpha=0.7, label='Trend')
@@ -675,6 +678,7 @@ if not very_low_data.empty:
 
 # Add target zone backgrounds (lighter than main plot)
 ax3.axhspan(TIGHT_LOW, TIGHT_HIGH, alpha=0.1, color='limegreen')
+ax3.axhspan(TIGHT_HIGH, HIGH, alpha=0.07, color='green')
 ax3.axhspan(HIGH, 600, alpha=0.07, color='orange')
 ax3.axhspan(20, LOW, alpha=0.07, color='red')
 
