@@ -50,8 +50,28 @@ df["ROC"] = df["ROC"].clip(-ROC_CLIP, ROC_CLIP)
 # 3) Core Metrics
 # --------------------------------------------------
 mean_glucose = glucose.mean()
+median_glucose = glucose.median()
 std_glucose = glucose.std(ddof=0)
+mode_glucose = glucose.mode()
+skew_glucose = glucose.skew()
 cv_percent = (std_glucose / mean_glucose) * 100 if mean_glucose > 0 else np.nan
+
+# skew interpretation
+if skew_glucose < -1:
+    skew_interpretation = "Left-skewed (hypoglycemia tendency)"
+    skew_clinical = "Review hypoglycemia patterns"
+elif skew_glucose > 1.5:
+    skew_interpretation = "Highly right-skewed (significant hyperglycemia)"
+    skew_clinical = "High diabetes burden in population"
+elif skew_glucose > 1.0:
+    skew_interpretation = "Moderately right-skewed (hyperglycemia present)"
+    skew_clinical = "Mean exceeds median - use median for typical value"
+elif skew_glucose > 0.5:
+    skew_interpretation = "Mildly right-skewed (expected pattern)"
+    skew_clinical = "Typical glucose distribution"
+else:
+    skew_interpretation = "Approximately symmetric"
+    skew_clinical = "Normal distribution pattern"
 
 # Day/Night CV
 day_mask = (df['Time'].dt.hour >= 6) & (df['Time'].dt.hour < 22)
@@ -426,6 +446,8 @@ ax1.fill_between(x, result["p5"], result["p95"], alpha=0.15, color='blue', label
 ax1.fill_between(x, result["p25"], result["p75"], alpha=0.35, color='blue', label="IQR")
 ax1.plot(x, result["median"], linewidth=2.5, color='darkblue', label="Median")
 ax1.plot(x, result["mean"], linestyle="--", linewidth=1.5, color='navy', label="Mean")
+#ax1.plot(x, result["mode"], linestyle="--", linewidth=1.5, color='steelblue', label="Mode")
+
 
 # Reference lines
 ax1.axhline(LOW, linestyle=":", linewidth=1, color='darkred', alpha=0.5)
@@ -463,7 +485,9 @@ textstr = (
     f"TAR >180: {tar:.1f}% (181-250: {tar_level1:.1f}%, >250: {tar_level2:.1f}%)\n"
     f"TBR <70: {tbr:.1f}% (54-69: {tbr_level1:.1f}%, <54: {tbr_level2:.1f}%)\n\n"
     f"GLUCOSE STATS\n"
-    f"Mean: {mean_glucose:.1f} mg/dL\n"
+    f"Mean: {mean_glucose:.1f} mg/dL, median: {median_glucose:.1f} mg/dL\n" 
+    f"Std: {std_glucose:.1f} mg/dL\n"
+    f"skew: {skew_glucose:.1f} ({skew_interpretation})\n"
     f"GMI: {gmi:.2f}%\n"
     f"CV: {cv_percent:.1f}% {'(Stable)' if cv_percent < 36 else '(Unstable)'}\n"
     f"CV: Day: {day_cv:.1f}%, Night: {night_cv:.1f}%\n"
@@ -630,6 +654,11 @@ if readings_per_day < 24:
     print(f"Warning: Low reading frequency ({readings_per_day:.0f} readings/day). Continuous glucose monitor expected.")
 if wear_percentage < 70:
     print(f"Warning: Low sensor wear time ({wear_percentage:.1f}%). Results may not be representative.")
+
+print(f"Distribution Shape: skew = {skew_glucose:.2f} - {skew_interpretation}")
+if 1.0 < skew_glucose < 1.5:
+    print(f"  → Note: In this 'gray zone', the mean ({mean_glucose:.1f}) exceeds the median ({median_glucose:.1f})")
+    print(f"  → The median better represents typical glucose exposure")
 
 print("\nGlucose Distribution Summary:")
 print(f"  Very Low (<54 mg/dL): {very_low_pct:.1f}%")
