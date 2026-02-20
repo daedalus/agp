@@ -233,7 +233,7 @@ total = len(glucose)
 very_low_pct = (glucose < 54).sum() / total * 100
 low_pct = ((glucose >= 54) & (glucose < LOW)).sum() / total * 100
 target_pct = ((glucose >= LOW) & (glucose <= HIGH)).sum() / total * 100
-high_pct = ((glucose > HIGH) & (glucose <= 250)).sum() / total * 100
+high_pct = ((glucose > TIGHT_HIGH) & (glucose <= 250)).sum() / total * 100
 very_high_pct = (glucose > 250).sum() / total * 100
 
 # Time in Range (Standard: 70-180)
@@ -645,8 +645,8 @@ print(f"Time in Tight Range (70-140): {titr:.1f}% - {'Excellent' if titr >= 50 e
 print(f"Time Below Range: {tbr:.1f}% - {'Target met (<4%)' if tbr < 4 else 'Above target'}")
 print(f"Glucose Variability (CV): {cv_percent:.1f}% - {'Stable (<36%)' if cv_percent < 36 else 'Unstable (≥36%)'}")
 print(f"Overall Trend: {trend_arrow} {trend_direction} (slope: {trend_slope:.1f} mg/dL/day)")
-print(f"Glycemia Risk Index (GRI): {gri:.1f} - {gri_txt}")
-print("="*60)
+print(f"Glycemia Risk Index (GRI): {gri:.1f} - {gri_txt}\n")
+print("-"*60)
 
 if days_of_data < 5:
     print(f"Warning: Only {days_of_data:.1f} days of data. AGP typically requires ≥5 days for reliability.")
@@ -659,10 +659,10 @@ print(f"Distribution Shape: skew = {skew_glucose:.2f} - {skew_interpretation}")
 if 1.0 < skew_glucose < 1.5:
     print(f"  → Note: In this 'gray zone', the mean ({mean_glucose:.1f}) exceeds the median ({median_glucose:.1f})")
     print(f"  → The median better represents typical glucose exposure")
-
+print("-"*60)
 print("\nGlucose Distribution Summary:")
 print(f"  Very Low (<54 mg/dL): {very_low_pct:.1f}%")
 print(f"  Low (54-69 mg/dL): {low_pct:.1f}%")
-print(f"  Target (70-180 mg/dL): {target_pct:.1f}%")
-print(f"  High (181-250 mg/dL): {high_pct:.1f}%")
+print(f"  Target (70-140 mg/dL): {tight_target_pct:.1f}%")
+print(f"  High (141-250 mg/dL): {high_pct:.1f}%")
 print(f"  Very High (>250 mg/dL): {very_high_pct:.1f}%")
