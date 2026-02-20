@@ -8,16 +8,22 @@ import argparse
 from datetime import timedelta
 from matplotlib.gridspec import GridSpec
 from matplotlib.patches import Patch
+from datetime import datetime
+
+trapz = np.trapezoid if hasattr(np, 'trapezoid') else np.trapz
 
 # Add argument parser
 parser = argparse.ArgumentParser(description='Generate Ambulatory Glucose Profile from sensor data')
 parser.add_argument('input_file', help='Path to Excel file with glucose data')
 parser.add_argument('--output', '-o', default='ambulatory_glucose_profile.png', 
                     help='Output PNG filename (default: ambulatory_glucose_profile.png)')
-parser.add_argument('--low-threshold', type=int, default=70, 
-                    help='Low glucose threshold in mg/dL (default: 70)')
+                   
+parser.add_argument('--low-threshold', type=int, default=54, 
+                    help='Low glucose threshold in mg/dL (default: 54)')
 parser.add_argument('--high-threshold', type=int, default=180, 
                     help='High glucose threshold in mg/dL (default: 180)')
+parser.add_argument('--very-high-threshold', type=int, default=250, 
+                    help='High glucose threshold in mg/dL (default: 250)')
 parser.add_argument('--tight-low', type=int, default=70, 
                     help='Tight range lower limit in mg/dL (default: 70)')
 parser.add_argument('--tight-high', type=int, default=140, 
@@ -47,8 +53,20 @@ parser.add_argument('--notes', '-note', default='',
 
 args = parser.parse_args()
 
-
-from datetime import datetime
+# Load config file if specified
+if args.config:
+    import json
+    try:
+        with open(args.config, 'r') as f:
+            config = json.load(f)
+            # Override args with config values (if they exist)
+            for key, value in config.items():
+                if hasattr(args, key):
+                    setattr(args, key, value)
+            if args.verbose:
+                print(f"Loaded configuration from {args.config}")
+    except Exception as e:
+        print(f"Error loading config file: {e}")
 
 def create_report_header(args):
     """Create a formatted header dictionary with patient and report information"""
@@ -66,28 +84,13 @@ def create_report_header(args):
 # Create header
 report_header = create_report_header(args)
 
-
-# Load config file if specified
-if args.config:
-    import json
-    try:
-        with open(args.config, 'r') as f:
-            config = json.load(f)
-            # Override args with config values (if they exist)
-            for key, value in config.items():
-                if hasattr(args, key):
-                    setattr(args, key, value)
-            if args.verbose:
-                print(f"Loaded configuration from {args.config}")
-    except Exception as e:
-        print(f"Error loading config file: {e}")
-
 # Replace hardcoded constants with argparse values
 LOW = args.low_threshold
 HIGH = args.high_threshold
+VERY_HIGH = args.very_high_threshold
 TIGHT_LOW = args.tight_low
 TIGHT_HIGH = args.tight_high
-BIN_MINUTES = args.bin_minutes
+BIN_MINUTES = args.bin_minutes if args.bin_minutes > 0 else 1
 MIN_SAMPLES_PER_BIN = args.min_samples
 ROC_CLIP = 10  # Keep this hardcoded as it's a physiological constant
 
@@ -302,13 +305,7 @@ def compute_risk_indices(values):
 lbgi, hbgi = compute_risk_indices(glucose)
 
 
-def compute_gri(lbgi, hbgi):
-    # GRI = (3.0 * LBGI) + (1.6 * HBGI)
-    return (3.0 * lbgi) + (1.6 * hbgi)
 
-
-gri = compute_gri(lbgi, hbgi)
-gri_txt = 'Low Risk' if gri < 20 else 'Moderate' if gri < 40 else 'High Risk' 
 
 # --------------------------------------------------
 # 9) TIR / TAR / TBR / TITR with levels
@@ -316,12 +313,12 @@ gri_txt = 'Low Risk' if gri < 20 else 'Moderate' if gri < 40 else 'High Risk'
 total = len(glucose)
 
 # Calculate percentages for each glucose range
-very_low_pct = (glucose < 54).sum() / total * 100
-low_pct = ((glucose >= 54) & (glucose < LOW)).sum() / total * 100
-tight_target_pct = ((glucose >= LOW) & (glucose <= TIGHT_HIGH)).sum() / total * 100  # 70-140
+very_low_pct = (glucose < LOW).sum() / total * 100
+low_pct = ((glucose >= TIGHT_LOW) & (glucose < LOW)).sum() / total * 100
+tight_target_pct = ((glucose >= TIGHT_LOW) & (glucose <= TIGHT_HIGH)).sum() / total * 100  # 70-140
 above_tight_pct = ((glucose > TIGHT_HIGH) & (glucose <= HIGH)).sum() / total * 100   # 141-180
-high_pct = ((glucose > HIGH) & (glucose <= 250)).sum() / total * 100                 # 181-250
-very_high_pct = (glucose > 250).sum() / total * 100
+high_pct = ((glucose > HIGH) & (glucose <= VERY_HIGH)).sum() / total * 100                 # 181-250
+very_high_pct = (glucose > VERY_HIGH).sum() / total * 100
 
 # Time in Range (Standard: 70-180) — correctly includes 70-140 AND 141-180
 tir = ((glucose >= LOW) & (glucose <= HIGH)).sum() / total * 100
@@ -343,6 +340,18 @@ tbr_level2 = very_low_pct
 tbr_level1 = low_pct
 tbr = tbr_level1 + tbr_level2
 
+
+def compute_gri(very_low_pct, low_pct, very_high_pct, high_pct):
+    raw = (3.0 * very_low_pct) + (2.4 * low_pct) + (1.6 * very_high_pct) + (0.8 * high_pct)
+    return min(raw, 100.0)
+
+gri = compute_gri(very_low_pct, low_pct, very_high_pct, high_pct)
+if gri < 20: gri_txt = 'Low Risk' 
+elif gri < 40: gri_txt = 'Moderate Risk' 
+elif gri < 60: gri_txt = 'High Risk' 
+elif gri < 80: gri_txt = 'Very High Risk' 
+else: gri_txt = 'Extremely High Risk'
+
 # --------------------------------------------------
 # 10) AUC Metrics
 # --------------------------------------------------
@@ -354,9 +363,9 @@ df_auc["time_minutes"] = (
 times = df_auc["time_minutes"].values
 values = df_auc["Sensor Reading(mg/dL)"].values
 
-auc_total = np.trapezoid(values, times)
-auc_high = np.trapezoid(np.maximum(values - HIGH, 0), times)
-auc_low = np.trapezoid(np.maximum(LOW - values, 0), times)
+auc_total = trapz(values, times)
+auc_high = trapz(np.maximum(values - HIGH, 0), times)
+auc_low = trapz(np.maximum(LOW - values, 0), times)
 
 time_weighted_avg = auc_total / times[-1]  # mg/dL (time-weighted average)
 time_in_hyperglycemia_pct = (auc_high / auc_total) * 100 if auc_total > 0 else 0
@@ -444,7 +453,7 @@ result["minutes"] = result["bin"] * BIN_MINUTES
 # --------------------------------------------------
 # Create a categorical column for glucose ranges (6 bands matching corrected metrics)
 df['glucose_range'] = pd.cut(df['Sensor Reading(mg/dL)'], 
-                              bins=[0, 54, 70, 140, 180, 250, 1000],
+                              bins=[0, LOW, TIGHT_LOW, TIGHT_HIGH, HIGH, VERY_HIGH, 1000],
                               labels=['Very Low', 'Low', 'Tight Target', 'Above Tight', 'High', 'Very High'])
 
 # --------------------------------------------------
@@ -537,8 +546,6 @@ ax1.fill_between(x, result["p5"], result["p95"], alpha=0.15, color='blue', label
 ax1.fill_between(x, result["p25"], result["p75"], alpha=0.35, color='blue', label="IQR")
 ax1.plot(x, result["median"], linewidth=2.5, color='darkblue', label="Median")
 ax1.plot(x, result["mean"], linestyle="--", linewidth=1.5, color='navy', label="Mean")
-#ax1.plot(x, result["mode"], linestyle="--", linewidth=1.5, color='steelblue', label="Mode")
-
 
 # Reference lines
 ax1.axhline(LOW, linestyle=":", linewidth=1, color='darkred', alpha=0.5)
@@ -567,6 +574,9 @@ ax1.set_xticklabels([f"{int(t//60):02d}:00" for t in xticks])
 current_ylim = ax1.get_ylim()
 ax1.set_ylim(current_ylim[0], current_ylim[1] * 1.15)  # Add 15% headroom
 
+def fmt(v, decimals=1):
+    return f"{v:.{decimals}f}" if not np.isnan(v) else "N/A"
+
 # Internal Metrics Box (EXACTLY AS ORIGINAL, positioned inside plot)
 textstr = (
     f"TIME IN RANGE\n"
@@ -577,7 +587,7 @@ textstr = (
     f"TBR <70: {tbr:.1f}% (54-69: {tbr_level1:.1f}%, <54: {tbr_level2:.1f}%)\n\n"
     f"GLUCOSE STATS\n"
     f"Mean: {mean_glucose:.1f} mg/dL, median: {median_glucose:.1f} mg/dL\n" 
-    f"Std: {std_glucose:.1f} mg/dL\n"
+    f"Std: {std_glucose:.1f} mg/dL, mode: {mode_glucose[0]:.1f} mg/dL\n"
     f"skew: {skew_glucose:.1f} ({skew_interpretation})\n"
     f"GMI: {gmi:.2f}%\n"
     f"CV: {cv_percent:.1f}% {'(Stable)' if cv_percent < 36 else '(Unstable)'}\n"
