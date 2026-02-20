@@ -190,9 +190,9 @@ total = len(glucose)
 
 # Calculate percentages for each glucose range
 very_low_pct = (glucose < 54).sum() / total * 100
-low_pct = ((glucose >= 54) & (glucose < LOW)).sum() / total * 100
-target_pct = ((glucose >= LOW) & (glucose <= HIGH)).sum() / total * 100
-high_pct = ((glucose > HIGH) & (glucose <= 250)).sum() / total * 100
+low_pct = ((glucose >= 54) & (glucose < TIGHT_LOW)).sum() / total * 100
+target_pct = ((glucose >= TIGHT_LOW) & (glucose <= TIGHT_HIGH)).sum() / total * 100
+high_pct = ((glucose > TIGHT_HIGH) & (glucose <= 250)).sum() / total * 100
 very_high_pct = (glucose > 250).sum() / total * 100
 
 # Time in Range (Standard: 70-180)
