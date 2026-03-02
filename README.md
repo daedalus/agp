@@ -407,50 +407,50 @@ See all options
 
 ### Core Metrics
 
-Metric	Description	Clinical Target
+Metric    Description    Clinical Target
 
-- TIR	Time in Range (70-180 mg/dL)	≥70%
-- TITR	Time in Tight Range (70-140 mg/dL)	≥50%
-- TBR	Time Below Range (<70 mg/dL)	<4%
-- CV	Coefficient of Variation	<36%
-- GMI	Glucose Management Indicator	below 7%
-- J-Index	Combined mean + variability	n/a
+- TIR    Time in Range (70-180 mg/dL)    ≥70%
+- TITR    Time in Tight Range (70-140 mg/dL)    ≥50%
+- TBR    Time Below Range (<70 mg/dL)    <4%
+- CV    Coefficient of Variation    <36%
+- GMI    Glucose Management Indicator    below 7%
+- J-Index    Combined mean + variability    n/a
 
 ### Variability Metrics
 
-Metric	Description
+Metric    Description
 
-- MAGE	Mean amplitude of glycemic excursions
-- MODD	Day-to-day glucose variability
-- CONGA	Intra-day glycemic variability (1h lag)
+- MAGE    Mean amplitude of glycemic excursions
+- MODD    Day-to-day glucose variability
+- CONGA    Intra-day glycemic variability (1h lag)
 
 ## Risk Metrics
 
-Metric	Description
+Metric    Description
 
-- LBGI	Low Blood Glucose Index
-- HBGI	High Blood Glucose Index
-- GRI	Glycemia risk index
-- ADRR	Average Daily Risk Range
+- LBGI    Low Blood Glucose Index
+- HBGI    High Blood Glucose Index
+- GRI    Glycemia risk index
+- ADRR    Average Daily Risk Range
 
 ### Data Quality
 
-Metric	Description	Warning Threshold
+Metric    Description    Warning Threshold
 
-- Readings/day	Average daily readings	<24 readings/day
-- Wear time	% of possible readings	<70%
-- Severe hypo/week	Events <40 mg/dL per week	n/a
+- Readings/day    Average daily readings    <24 readings/day
+- Wear time    % of possible readings    <70%
+- Severe hypo/week    Events <40 mg/dL per week    n/a
 
 ## Configuration
 
 Key parameters at script top:
 
-- LOW = 70			# Lower bound standard range
-- HIGH = 180			# Upper bound standard range
-- TIGHT_LOW = 70		# Lower bound tight range
-- TIGHT_HIGH = 140		# Upper bound tight range
-- BIN_MINUTES = 5		# Time bin size for AGP
-- ROC_CLIP = 10		# Rate of change physiological limit
+- LOW = 70            # Lower bound standard range
+- HIGH = 180            # Upper bound standard range
+- TIGHT_LOW = 70        # Lower bound tight range
+- TIGHT_HIGH = 140        # Upper bound tight range
+- BIN_MINUTES = 5        # Time bin size for AGP
+- ROC_CLIP = 10        # Rate of change physiological limit
 
 ## Limitations & Warnings
 

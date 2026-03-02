@@ -278,7 +278,12 @@ def generate_agp_plot(
         if daily_plot:
             fig = plt.figure(figsize=(18, 21))
             gs = GridSpec(
-                4, 12, figure=fig, height_ratios=[3, 1.5, 1.5, 2], hspace=0.35, wspace=0.3
+                4,
+                12,
+                figure=fig,
+                height_ratios=[3, 1.5, 1.5, 2],
+                hspace=0.35,
+                wspace=0.3,
             )
         else:
             fig = plt.figure(figsize=(18, 17))
