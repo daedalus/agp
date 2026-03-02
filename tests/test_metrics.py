@@ -7,12 +7,23 @@ from agp.metrics import (
     compute_all_metrics,
     compute_auc_metrics,
     compute_conga,
+    compute_conga_metrics,
     compute_core_metrics,
+    compute_cv_rate,
     compute_data_quality_metrics,
+    compute_ea1c,
+    compute_glucose_exposure_indices,
+    compute_grade,
     compute_gri,
+    compute_gvp,
+    compute_hourly_tir,
+    compute_lability_index,
+    compute_m_value,
+    compute_mag,
     compute_mage,
     compute_modd,
     compute_overall_glucose_trend,
+    compute_percentile_metrics,
     compute_risk_indices,
     compute_time_in_range_metrics,
     compute_variability_metrics,
@@ -336,6 +347,27 @@ EXPECTED_KEYS = [
     "gmi",
     "days_of_data",
     "wear_percentage",
+    "p5",
+    "p25",
+    "p50",
+    "p75",
+    "p95",
+    "iqr",
+    "grade",
+    "grade_hypo_pct",
+    "grade_eu_pct",
+    "grade_hyper_pct",
+    "mag",
+    "conga2",
+    "conga4",
+    "conga24",
+    "m_value",
+    "ea1c",
+    "hypo_index",
+    "hyper_index",
+    "gvp",
+    "lability_index",
+    "cv_rate",
 ]
 
 
@@ -367,3 +399,280 @@ def test_all_metrics_days_of_data(glucose_df, cfg):
     m = compute_all_metrics(glucose_df, cfg)
     # 2016 readings × 5 minutes = 10080 min = 7 days
     assert m["days_of_data"] == pytest.approx(7.0, abs=0.1)
+
+
+# ---------------------------------------------------------------------------
+# compute_percentile_metrics
+# ---------------------------------------------------------------------------
+
+
+def test_percentile_metrics_returns_expected_keys(glucose_df, cfg):
+    result = compute_percentile_metrics(glucose_df, cfg)
+    for key in ["p5", "p25", "p50", "p75", "p95", "iqr"]:
+        assert key in result, f"Missing key: {key}"
+
+
+def test_percentile_metrics_ordering(glucose_df, cfg):
+    result = compute_percentile_metrics(glucose_df, cfg)
+    assert result["p25"] <= result["p50"] <= result["p75"]
+
+
+def test_percentile_metrics_iqr_equals_p75_minus_p25(glucose_df, cfg):
+    result = compute_percentile_metrics(glucose_df, cfg)
+    assert result["iqr"] == pytest.approx(result["p75"] - result["p25"])
+
+
+# ---------------------------------------------------------------------------
+# compute_grade
+# ---------------------------------------------------------------------------
+
+
+def test_grade_returns_expected_keys(glucose_df, cfg):
+    result = compute_grade(glucose_df, cfg)
+    for key in ["grade", "grade_hypo_pct", "grade_eu_pct", "grade_hyper_pct"]:
+        assert key in result, f"Missing key: {key}"
+
+
+def test_grade_in_range(glucose_df, cfg):
+    result = compute_grade(glucose_df, cfg)
+    assert 0 <= result["grade"] <= 50
+
+
+def test_grade_capped_at_50_for_extreme_values(cfg):
+    rng = pd.date_range("2024-01-01", periods=100, freq="5min")
+    df = pd.DataFrame({"Time": rng, "Sensor Reading(mg/dL)": np.full(100, 500.0)})
+    result = compute_grade(df, cfg)
+    assert result["grade"] <= 50.0
+
+
+def test_grade_pcts_sum_to_100(glucose_df, cfg):
+    result = compute_grade(glucose_df, cfg)
+    total = result["grade_hypo_pct"] + result["grade_eu_pct"] + result["grade_hyper_pct"]
+    assert total == pytest.approx(100.0, abs=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# compute_mag
+# ---------------------------------------------------------------------------
+
+
+def test_mag_returns_expected_keys(glucose_df, cfg):
+    result = compute_mag(glucose_df, cfg)
+    assert "mag" in result
+
+
+def test_mag_non_negative(glucose_df, cfg):
+    result = compute_mag(glucose_df, cfg)
+    assert result["mag"] >= 0
+
+
+def test_mag_nan_for_single_reading(cfg):
+    rng = pd.date_range("2024-01-01", periods=1, freq="5min")
+    df = pd.DataFrame({"Time": rng, "Sensor Reading(mg/dL)": [120.0]})
+    result = compute_mag(df, cfg)
+    assert np.isnan(result["mag"])
+
+
+# ---------------------------------------------------------------------------
+# compute_conga_metrics
+# ---------------------------------------------------------------------------
+
+
+def test_conga_metrics_returns_expected_keys(glucose_df, cfg):
+    result = compute_conga_metrics(glucose_df, cfg)
+    for key in ["conga2", "conga4", "conga24"]:
+        assert key in result, f"Missing key: {key}"
+
+
+def test_conga_metrics_non_negative(glucose_df, cfg):
+    result = compute_conga_metrics(glucose_df, cfg)
+    for key in ["conga2", "conga4", "conga24"]:
+        assert result[key] >= 0
+
+
+def test_conga_metrics_zero_for_constant_glucose(cfg):
+    rng = pd.date_range("2024-01-01", periods=500, freq="5min")
+    df = pd.DataFrame({"Time": rng, "Sensor Reading(mg/dL)": np.full(500, 110.0)})
+    result = compute_conga_metrics(df, cfg)
+    for key in ["conga2", "conga4", "conga24"]:
+        assert result[key] == pytest.approx(0.0, abs=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# compute_m_value
+# ---------------------------------------------------------------------------
+
+
+def test_m_value_returns_expected_keys(glucose_df, cfg):
+    result = compute_m_value(glucose_df, cfg)
+    assert "m_value" in result
+
+
+def test_m_value_non_negative(glucose_df, cfg):
+    result = compute_m_value(glucose_df, cfg)
+    assert result["m_value"] >= 0
+
+
+def test_m_value_zero_for_constant_at_reference(cfg):
+    rng = pd.date_range("2024-01-01", periods=100, freq="5min")
+    df = pd.DataFrame({"Time": rng, "Sensor Reading(mg/dL)": np.full(100, 120.0)})
+    result = compute_m_value(df, cfg)
+    assert result["m_value"] == pytest.approx(0.0, abs=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# compute_ea1c
+# ---------------------------------------------------------------------------
+
+
+def test_ea1c_returns_expected_keys(glucose_df, cfg):
+    result = compute_ea1c(glucose_df, cfg)
+    assert "ea1c" in result
+
+
+def test_ea1c_formula_at_120(cfg):
+    rng = pd.date_range("2024-01-01", periods=100, freq="5min")
+    df = pd.DataFrame({"Time": rng, "Sensor Reading(mg/dL)": np.full(100, 120.0)})
+    result = compute_ea1c(df, cfg)
+    assert result["ea1c"] == pytest.approx((120 + 46.7) / 28.7)
+
+
+# ---------------------------------------------------------------------------
+# compute_glucose_exposure_indices
+# ---------------------------------------------------------------------------
+
+
+def test_glucose_exposure_indices_returns_expected_keys(glucose_df, cfg):
+    result = compute_glucose_exposure_indices(glucose_df, cfg)
+    for key in ["hypo_index", "hyper_index"]:
+        assert key in result, f"Missing key: {key}"
+
+
+def test_glucose_exposure_indices_non_negative(glucose_df, cfg):
+    result = compute_glucose_exposure_indices(glucose_df, cfg)
+    assert result["hypo_index"] >= 0
+    assert result["hyper_index"] >= 0
+
+
+def test_hypo_index_zero_for_in_range_glucose(cfg):
+    rng = pd.date_range("2024-01-01", periods=100, freq="5min")
+    df = pd.DataFrame({"Time": rng, "Sensor Reading(mg/dL)": np.full(100, 120.0)})
+    result = compute_glucose_exposure_indices(df, cfg)
+    assert result["hypo_index"] == pytest.approx(0.0)
+
+
+def test_hyper_index_zero_for_in_range_glucose(cfg):
+    rng = pd.date_range("2024-01-01", periods=100, freq="5min")
+    df = pd.DataFrame({"Time": rng, "Sensor Reading(mg/dL)": np.full(100, 120.0)})
+    result = compute_glucose_exposure_indices(df, cfg)
+    assert result["hyper_index"] == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# compute_gvp
+# ---------------------------------------------------------------------------
+
+
+def test_gvp_returns_expected_keys(glucose_df, cfg):
+    result = compute_gvp(glucose_df, cfg)
+    assert "gvp" in result
+
+
+def test_gvp_non_negative(glucose_df, cfg):
+    result = compute_gvp(glucose_df, cfg)
+    assert result["gvp"] >= 0
+
+
+def test_gvp_zero_for_constant_glucose(cfg):
+    rng = pd.date_range("2024-01-01", periods=100, freq="5min")
+    df = pd.DataFrame({"Time": rng, "Sensor Reading(mg/dL)": np.full(100, 120.0)})
+    result = compute_gvp(df, cfg)
+    assert result["gvp"] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_gvp_nan_for_single_reading(cfg):
+    rng = pd.date_range("2024-01-01", periods=1, freq="5min")
+    df = pd.DataFrame({"Time": rng, "Sensor Reading(mg/dL)": [120.0]})
+    result = compute_gvp(df, cfg)
+    assert np.isnan(result["gvp"])
+
+
+# ---------------------------------------------------------------------------
+# compute_hourly_tir
+# ---------------------------------------------------------------------------
+
+
+def test_hourly_tir_returns_expected_keys(glucose_df, cfg):
+    result = compute_hourly_tir(glucose_df, cfg)
+    assert "tir_by_hour" in result
+
+
+def test_hourly_tir_length_24(glucose_df, cfg):
+    result = compute_hourly_tir(glucose_df, cfg)
+    assert len(result["tir_by_hour"]) == 24
+
+
+def test_hourly_tir_values_in_range(glucose_df, cfg):
+    result = compute_hourly_tir(glucose_df, cfg)
+    for val in result["tir_by_hour"]:
+        if not np.isnan(val):
+            assert 0 <= val <= 100
+
+
+def test_all_metrics_tir_by_hour_present(glucose_df, cfg):
+    m = compute_all_metrics(glucose_df, cfg)
+    assert "tir_by_hour" in m
+    assert len(m["tir_by_hour"]) == 24
+
+
+# ---------------------------------------------------------------------------
+# compute_lability_index
+# ---------------------------------------------------------------------------
+
+
+def test_lability_index_returns_expected_keys(glucose_df, cfg):
+    result = compute_lability_index(glucose_df, cfg)
+    assert "lability_index" in result
+
+
+def test_lability_index_non_negative(glucose_df, cfg):
+    result = compute_lability_index(glucose_df, cfg)
+    assert result["lability_index"] >= 0
+
+
+def test_lability_index_zero_for_constant_glucose(cfg):
+    rng = pd.date_range("2024-01-01", periods=100, freq="5min")
+    df = pd.DataFrame({"Time": rng, "Sensor Reading(mg/dL)": np.full(100, 120.0)})
+    result = compute_lability_index(df, cfg)
+    assert result["lability_index"] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_lability_index_nan_for_single_reading(cfg):
+    rng = pd.date_range("2024-01-01", periods=1, freq="5min")
+    df = pd.DataFrame({"Time": rng, "Sensor Reading(mg/dL)": [120.0]})
+    result = compute_lability_index(df, cfg)
+    assert np.isnan(result["lability_index"])
+
+
+# ---------------------------------------------------------------------------
+# compute_cv_rate
+# ---------------------------------------------------------------------------
+
+
+def test_cv_rate_returns_expected_keys(glucose_df, cfg):
+    result = compute_cv_rate(glucose_df, cfg)
+    assert "cv_rate" in result
+
+
+def test_cv_rate_nan_for_constant_glucose(cfg):
+    rng = pd.date_range("2024-01-01", periods=100, freq="5min")
+    df = pd.DataFrame({"Time": rng, "Sensor Reading(mg/dL)": np.full(100, 120.0)})
+    result = compute_cv_rate(df, cfg)
+    assert np.isnan(result["cv_rate"])
+
+
+def test_cv_rate_nan_for_single_reading(cfg):
+    rng = pd.date_range("2024-01-01", periods=1, freq="5min")
+    df = pd.DataFrame({"Time": rng, "Sensor Reading(mg/dL)": [120.0]})
+    result = compute_cv_rate(df, cfg)
+    assert np.isnan(result["cv_rate"])

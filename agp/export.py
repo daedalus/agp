@@ -19,6 +19,14 @@ def export_metrics(metrics, export_path, report_header=None, verbose=False):
     conga = metrics["conga"]
     adrr = metrics["adrr"]
     severe_hypo_per_week = metrics["severe_hypo_per_week"]
+    mag = metrics["mag"]
+    conga2 = metrics["conga2"]
+    conga4 = metrics["conga4"]
+    conga24 = metrics["conga24"]
+    m_value = metrics["m_value"]
+    lability_index = metrics["lability_index"]
+    cv_rate = metrics["cv_rate"]
+    gvp = metrics["gvp"]
 
     export_data.update(
         {
@@ -64,6 +72,28 @@ def export_metrics(metrics, export_path, report_header=None, verbose=False):
                 if not np.isnan(severe_hypo_per_week)
                 else None
             ),
+            "iqr": round(metrics["iqr"], 1),
+            "p5": round(metrics["p5"], 1),
+            "p25": round(metrics["p25"], 1),
+            "p50": round(metrics["p50"], 1),
+            "p75": round(metrics["p75"], 1),
+            "p95": round(metrics["p95"], 1),
+            "grade": round(metrics["grade"], 2),
+            "grade_hypo_pct": round(metrics["grade_hypo_pct"], 1),
+            "grade_eu_pct": round(metrics["grade_eu_pct"], 1),
+            "grade_hyper_pct": round(metrics["grade_hyper_pct"], 1),
+            "mag": round(mag, 2) if not np.isnan(mag) else None,
+            "conga2": round(conga2, 1) if not np.isnan(conga2) else None,
+            "conga4": round(conga4, 1) if not np.isnan(conga4) else None,
+            "conga24": round(conga24, 1) if not np.isnan(conga24) else None,
+            "m_value": round(m_value, 2) if not np.isnan(m_value) else None,
+            "ea1c": round(metrics["ea1c"], 2),
+            "hypo_index": round(metrics["hypo_index"], 4),
+            "hyper_index": round(metrics["hyper_index"], 4),
+            "gvp": round(gvp, 2) if not np.isnan(gvp) else None,
+            "tir_by_hour": metrics["tir_by_hour"],
+            "lability_index": round(lability_index, 4) if not np.isnan(lability_index) else None,
+            "cv_rate": round(cv_rate, 2) if not np.isnan(cv_rate) else None,
         }
     )
 
