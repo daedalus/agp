@@ -116,6 +116,189 @@ def compute_gri(very_low_pct, low_pct, very_high_pct, high_pct):
     return min(raw, 100.0)
 
 
+def compute_percentile_metrics(df, cfg):
+    """Compute AGP percentile scalars and IQR."""
+    glucose = df["Sensor Reading(mg/dL)"]
+    p5 = float(np.percentile(glucose, 5))
+    p25 = float(np.percentile(glucose, 25))
+    p50 = float(np.percentile(glucose, 50))
+    p75 = float(np.percentile(glucose, 75))
+    p95 = float(np.percentile(glucose, 95))
+    iqr = p75 - p25
+    return {"p5": p5, "p25": p25, "p50": p50, "p75": p75, "p95": p95, "iqr": iqr}
+
+
+def compute_grade(df, cfg):
+    """Compute GRADE score and percentage contributions."""
+    glucose = df["Sensor Reading(mg/dL)"]
+    g_mmol = glucose / 18.018
+    g_mmol_clamped = g_mmol.clip(lower=1.0)
+
+    x = np.log(np.log(g_mmol_clamped / 1.794))
+    grade_i = 425 * x**2
+    grade_i = np.minimum(grade_i, 50)
+    grade = min(float(grade_i.mean()), 50.0)
+
+    n = len(g_mmol)
+    grade_hypo_pct = float((g_mmol < 3.9).sum() / n * 100)
+    grade_eu_pct = float(((g_mmol >= 3.9) & (g_mmol <= 7.8)).sum() / n * 100)
+    grade_hyper_pct = float((g_mmol > 7.8).sum() / n * 100)
+
+    return {
+        "grade": grade,
+        "grade_hypo_pct": grade_hypo_pct,
+        "grade_eu_pct": grade_eu_pct,
+        "grade_hyper_pct": grade_hyper_pct,
+    }
+
+
+def compute_mag(df, cfg):
+    """Compute Mean Absolute Glucose rate of change (mg/dL per hour)."""
+    df_sorted = df.sort_values("Time")
+    glucose = df_sorted["Sensor Reading(mg/dL)"].values
+    times = df_sorted["Time"].values
+
+    if len(glucose) < 2:
+        return {"mag": np.nan}
+
+    dt_hours = np.diff(times.astype("datetime64[s]")).astype(float) / 3600.0
+    dg = np.abs(np.diff(glucose))
+
+    valid = dt_hours > 0
+    if not valid.any():
+        return {"mag": np.nan}
+
+    mag = float(np.mean(dg[valid] / dt_hours[valid]))
+    return {"mag": mag}
+
+
+def compute_conga_metrics(df, cfg):
+    """Compute CONGA at multiple lags (2h, 4h, 24h)."""
+    conga2 = compute_conga(df, lag_minutes=120)
+    conga4 = compute_conga(df, lag_minutes=240)
+    conga24 = compute_conga(df, lag_minutes=1440)
+    return {"conga2": conga2, "conga4": conga4, "conga24": conga24}
+
+
+def compute_m_value(df, cfg):
+    """Compute Schlichtkrull M-Value."""
+    glucose = df["Sensor Reading(mg/dL)"]
+    if glucose.empty:
+        return {"m_value": np.nan}
+    reference = cfg.get("M_VALUE_REFERENCE", 120)
+    m = float(np.mean(np.abs(10 * np.log10(glucose / reference)) ** 3))
+    return {"m_value": m}
+
+
+def compute_ea1c(df, cfg):
+    """Compute estimated A1c using the Nathan (DCCT-aligned) formula."""
+    glucose = df["Sensor Reading(mg/dL)"]
+    mean_glucose = glucose.mean()
+    ea1c = (mean_glucose + 46.7) / 28.7
+    return {"ea1c": float(ea1c)}
+
+
+def compute_glucose_exposure_indices(df, cfg):
+    """Compute Hypoglycaemic Index and Hyperglycaemic Index (Rodbard 2009)."""
+    LOW = cfg["LOW"]
+    HIGH = cfg["HIGH"]
+    glucose = df["Sensor Reading(mg/dL)"].values
+
+    hypo = np.where(glucose < LOW, ((LOW - glucose) / LOW) ** 2, 0.0)
+    hyper = np.where(glucose > HIGH, ((glucose - HIGH) / HIGH) ** 2, 0.0)
+
+    hypo_index = float(np.mean(hypo) * 100)
+    hyper_index = float(np.mean(hyper) * 100)
+    return {"hypo_index": hypo_index, "hyper_index": hyper_index}
+
+
+def compute_gvp(df, cfg):
+    """Compute Glucose Variability Percentage."""
+    df_sorted = df.sort_values("Time")
+    glucose = df_sorted["Sensor Reading(mg/dL)"].values
+    times = df_sorted["Time"].values
+
+    if len(glucose) < 2:
+        return {"gvp": np.nan}
+
+    dt = np.diff(times.astype("datetime64[s]")).astype(float) / 60.0
+    dg = np.diff(glucose)
+
+    flat_length = float(np.sum(dt))
+    if flat_length == 0:
+        return {"gvp": np.nan}
+
+    curve_length = float(np.sum(np.sqrt(dt**2 + dg**2)))
+    gvp = (curve_length / flat_length - 1) * 100
+    return {"gvp": gvp}
+
+
+def compute_hourly_tir(df, cfg):
+    """Compute TIR broken down by hour of day (0–23)."""
+    LOW = cfg["LOW"]
+    HIGH = cfg["HIGH"]
+
+    in_range = (df["Sensor Reading(mg/dL)"] >= LOW) & (df["Sensor Reading(mg/dL)"] <= HIGH)
+    hours = df["Time"].dt.hour
+
+    tir_by_hour = []
+    for h in range(24):
+        mask = hours == h
+        if mask.any():
+            tir_by_hour.append(float(in_range[mask].mean() * 100))
+        else:
+            tir_by_hour.append(np.nan)
+
+    return {"tir_by_hour": tir_by_hour}
+
+
+def compute_lability_index(df, cfg):
+    """Compute Lability Index."""
+    df_sorted = df.sort_values("Time")
+    glucose = df_sorted["Sensor Reading(mg/dL)"].values
+    times = df_sorted["Time"].values
+
+    if len(glucose) < 2:
+        return {"lability_index": np.nan}
+
+    dt_hours = np.diff(times.astype("datetime64[s]")).astype(float) / 3600.0
+    dg = np.diff(glucose)
+
+    time_diff_s = (times[-1].astype("datetime64[s]") - times[0].astype("datetime64[s]")).astype(float)
+    total_hours = float(time_diff_s / 3600.0)
+    if total_hours == 0:
+        return {"lability_index": np.nan}
+
+    valid = dt_hours > 0
+    li = float(np.sum(dg[valid]**2 / dt_hours[valid]) / total_hours)
+    return {"lability_index": li}
+
+
+def compute_cv_rate(df, cfg):
+    """Compute CV of glucose rate of change."""
+    df_sorted = df.sort_values("Time")
+    glucose = df_sorted["Sensor Reading(mg/dL)"].values
+    times = df_sorted["Time"].values
+
+    if len(glucose) < 2:
+        return {"cv_rate": np.nan}
+
+    dt_hours = np.diff(times.astype("datetime64[s]")).astype(float) / 3600.0
+    dg = np.diff(glucose)
+
+    valid = dt_hours > 0
+    if not valid.any():
+        return {"cv_rate": np.nan}
+
+    rates = dg[valid] / dt_hours[valid]
+    mean_rate = float(np.mean(rates))
+    if mean_rate == 0:
+        return {"cv_rate": np.nan}
+
+    cv_rate = float(np.std(rates, ddof=0) / abs(mean_rate) * 100)
+    return {"cv_rate": cv_rate}
+
+
 def compute_core_metrics(df, cfg):
     """Compute core descriptive glucose statistics."""
     glucose = df["Sensor Reading(mg/dL)"]
@@ -373,4 +556,15 @@ def compute_all_metrics(df, cfg):
     metrics.update(compute_auc_metrics(df, cfg))
     metrics.update(compute_data_quality_metrics(df, cfg))
     metrics.update(compute_overall_glucose_trend(df, cfg))
+    metrics.update(compute_percentile_metrics(df, cfg))
+    metrics.update(compute_grade(df, cfg))
+    metrics.update(compute_mag(df, cfg))
+    metrics.update(compute_conga_metrics(df, cfg))
+    metrics.update(compute_m_value(df, cfg))
+    metrics.update(compute_ea1c(df, cfg))
+    metrics.update(compute_glucose_exposure_indices(df, cfg))
+    metrics.update(compute_gvp(df, cfg))
+    metrics.update(compute_hourly_tir(df, cfg))
+    metrics.update(compute_lability_index(df, cfg))
+    metrics.update(compute_cv_rate(df, cfg))
     return metrics
