@@ -419,7 +419,14 @@ See all options
 
 ### Example output
 
+#### Light mode
+
 ![Example](examples/ambulatory_glucose_profile.png)
+
+#### Dark mode
+
+![Example_dark](examples/ambulatory_glucose_profile_dark.png)
+
 
 ## Metrics Explained
 
