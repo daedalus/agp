@@ -298,7 +298,7 @@ def _build_stats_text(metrics, cfg) -> str:
         f"ADDITIONAL VARIABILITY\n"
         f"MAG: {fmt(mag)}  GVP: {fmt(gvp)}%\n"
         f"CONGA(2h): {fmt(conga2)}  CONGA(4h): {fmt(conga4)}  CONGA(24h): {fmt(conga24)}\n"
-        f"Lability Index: {fmt(lability_index)}  CVrate: {fmt(cv_rate)}%\n"
+        f"Lability Index: {fmt(lability_index)} (mg/dL)^2/h,  CVrate: {fmt(cv_rate)}%\n"
         f"M-Value: {fmt(m_value)}\n\n"
         f"COMPOSITE INDICES\n"
         f"eA1c: {ea1c:.2f}%\n"

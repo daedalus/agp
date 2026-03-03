@@ -275,7 +275,9 @@ def compute_lability_index(df, cfg):
 
     valid = dt_hours > 0
     li = float(np.sum(dg[valid] ** 2 / dt_hours[valid]) / total_hours)
-    return {"lability_index": li}
+    sqrt_li = np.sqrt(li)
+
+    return {"lability_index": sqrt_li}
 
 
 def compute_cv_rate(df, cfg):
@@ -295,11 +297,14 @@ def compute_cv_rate(df, cfg):
         return {"cv_rate": np.nan}
 
     rates = dg[valid] / dt_hours[valid]
-    mean_rate = float(np.mean(rates))
-    if mean_rate == 0:
+    rates_abs = np.abs(rates)
+
+    mean_abs = float(np.mean(rates_abs))
+    if not np.isfinite(mean_abs) or mean_abs == 0:
         return {"cv_rate": np.nan}
 
-    cv_rate = float(np.std(rates, ddof=0) / abs(mean_rate) * 100)
+    cv_rate = float(np.std(rates_abs, ddof=1) / mean_abs * 100)
+
     return {"cv_rate": cv_rate}
 
 
