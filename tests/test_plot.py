@@ -207,8 +207,8 @@ def test_agp_plot_savefig_receives_dark_facecolor(
     df_with_roc, cfg, report_header, tmp_path
 ):
     """savefig must be called with facecolor=_fig_fc so dark background is preserved on disk."""
+
     import matplotlib.colors as mcolors
-    from unittest.mock import call
 
     result = build_agp_profile(df_with_roc, cfg)
     metrics = compute_all_metrics(df_with_roc, cfg)
