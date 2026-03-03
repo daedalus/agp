@@ -584,7 +584,8 @@ def _draw_agp_panel(ax1, ax_stats, result, metrics, cfg, theme: dict):
         label="ROC (mg/dL/min)",
         color="orange",
     )
-    ax2.set_ylabel("Rate of Change (mg/dL/min)", fontsize=12)
+    ax2.set_ylabel("")
+
 
     xticks = np.arange(0, 1441, 120)
     ax1.set_xticks(xticks)
